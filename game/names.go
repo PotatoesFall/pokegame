@@ -244,7 +244,7 @@ var names = map[Pokémon]string{
 	230: "kingdra",
 	231: "phanpy",
 	232: "donphan",
-	233: "porygon2",
+	// 233: "porygon2",
 	234: "stantler",
 	235: "smeargle",
 	236: "tyrogue",
