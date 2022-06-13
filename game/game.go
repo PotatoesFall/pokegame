@@ -1,7 +1,7 @@
 package game
 
 // Implementation is what players should implement
-type Implementation func([]Pokémon) Player
+type Implementation func() Player
 
 type Player interface {
 	// Name returns the name of the player

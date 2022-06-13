@@ -25,7 +25,7 @@ func (d dummy) Name() string {
 
 var count = 0
 
-func New([]game.Pokémon) game.Player {
+func New() game.Player {
 	count++
 	return dummy{
 		name: `dummy ` + strconv.Itoa(count),

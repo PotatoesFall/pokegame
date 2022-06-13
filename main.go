@@ -17,11 +17,11 @@ func main() {
 
 func runGame(impl1, impl2 game.Implementation) {
 	fmt.Println(`GAME 1`)
-	p1, p2 := impl1(game.AllNames()), impl2(game.AllNames())
+	p1, p2 := impl1(), impl2()
 	winner1 := playGame(p1, p2)
 
 	fmt.Println()
-	p1, p2 = impl1(game.AllNames()), impl2(game.AllNames())
+	p1, p2 = impl1(), impl2()
 	fmt.Println(`GAME 2`)
 	winner2 := playGame(p2, p1)
 	fmt.Println()
