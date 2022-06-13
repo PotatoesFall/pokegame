@@ -26,7 +26,7 @@ func runGame(impl1, impl2 game.Implementation) {
 	winner2 := playGame(p2, p1)
 	fmt.Println()
 
-	if winner1 != winner2 {
+	if winner1 == winner2 {
 		exit(`It's a tie! Both programs lost and won once.`)
 	}
 
@@ -60,12 +60,27 @@ func playGame(p1, p2 game.Player) int {
 	currentPlayer, otherPlayer := p2, p1
 	winner := 0
 
+	allNames := game.AllNames()
 	for turn(&p, used, currentPlayer, &c) {
+		if noMoreAnswers(allNames, used, c) {
+			fmt.Printf("There are no correct answers left! %s loses!\n", otherPlayer.Name())
+			break
+		}
 		currentPlayer, otherPlayer = otherPlayer, currentPlayer
 		winner = 1 - winner
 	}
 
 	return winner + 1
+}
+
+func noMoreAnswers(allNames []game.Pokémon, used map[game.Pokémon]bool, c rune) bool {
+	for _, pok := range game.AllNames() {
+		if pok.Start() == c && !used[pok] {
+			return false
+		}
+	}
+
+	return true
 }
 
 func turn(p *game.Pokémon, used map[game.Pokémon]bool, p1 game.Player, c *rune) bool {
