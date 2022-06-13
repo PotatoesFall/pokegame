@@ -38,7 +38,7 @@ func runGame(impl1, impl2 game.Implementation) {
 		exit(fmt.Sprintf(`%s won both games!`, p2.Name()))
 	}
 
-	panic(`unable to figure out who on`)
+	panic(`unable to figure out who won`)
 }
 
 func exit(msg string) {
