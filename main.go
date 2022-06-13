@@ -6,13 +6,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/PotatoesFall/pokegame/dummy"
 	"github.com/PotatoesFall/pokegame/game"
+	"github.com/PotatoesFall/pokegame/remote"
 )
 
 func main() {
 	rand.Seed(time.Now().UnixMicro())
-	runGame(dummy.New, dummy.New)
+	runGame(remote.NewImplementation(`http://localhost:60605`), remote.NewImplementation(`http://localhost:60605`))
 }
 
 func runGame(impl1, impl2 game.Implementation) {

@@ -9,6 +9,22 @@ import (
 	"github.com/PotatoesFall/pokegame/game"
 )
 
+type messageType string
+
+const (
+	messageTypeNewGame     messageType = `new-game`
+	messageTypeNameRequest messageType = `name-request`
+	messageTypeName        messageType = `name`
+	messageTypeYourTurn    messageType = `your-turn`
+	messageTypeMyTurn      messageType = `my-turn`
+	messageTypeGameOver    messageType = `game-over`
+)
+
+type message struct {
+	typ messageType
+	msg json.RawMessage
+}
+
 type newGameRequest struct {
 	SessionID int
 }

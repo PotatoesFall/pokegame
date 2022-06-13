@@ -2,21 +2,29 @@ package remote
 
 import (
 	"encoding/json"
-	"fmt"
-	"net"
 	"net/http"
 
 	"github.com/PotatoesFall/pokegame/game"
+	"github.com/gorilla/websocket"
 )
 
-func StartImplementationServer(impl game.Implementation) {
-	listener, err := net.Listen(`tcp`, `:0`)
+func StartImplementation(impl game.Implementation, serverEndpoint string) {
+	conn, _, err := websocket.DefaultDialer.Dial(serverEndpoint, nil)
 	if err != nil {
 		panic(err)
 	}
+	defer conn.Close()
 
-	fmt.Printf("Starting server on port %d\n", listener.Addr().(*net.TCPAddr).Port)
-	go func() game.Player {
+	for {
+		var message Message
+		err := conn.ReadJSON(&message)
+		if err != nil {
+			panic(err)
+		}
+
+	}
+
+	go func() {
 		panic(http.Serve(listener, handler{impl: impl, sessions: make(map[int]game.Player)}))
 	}()
 }
