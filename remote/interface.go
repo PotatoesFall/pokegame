@@ -18,3 +18,7 @@ type yourTurnMessage struct {
 type myTurnMessage struct {
 	Next game.Pokémon
 }
+
+type gameOverMessage struct {
+	Won bool
+}

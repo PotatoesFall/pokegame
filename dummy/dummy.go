@@ -23,6 +23,8 @@ func (d dummy) Name() string {
 	return d.name
 }
 
+func (dummy) GameOver(bool) {}
+
 var count = 0
 
 func New() game.Player {

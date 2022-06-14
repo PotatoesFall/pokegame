@@ -83,3 +83,9 @@ func (p player) Play(prev game.Pokémon) game.Pokémon {
 	resp := <-p.turnChan
 	return resp.Next
 }
+
+func (p player) GameOver(won bool) {
+	if err := p.conn.Send(messageTypeGameOver, gameOverMessage{won}); err != nil {
+		fmt.Println(`error sending game over`, err)
+	}
+}

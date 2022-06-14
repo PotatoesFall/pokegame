@@ -83,6 +83,9 @@ func playGame(p1, p2 game.Player) int {
 		winner = 1 - winner
 	}
 
+	p1.GameOver(winner == 1)
+	p2.GameOver(winner == 2)
+
 	return winner + 1
 }
 

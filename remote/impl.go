@@ -18,6 +18,7 @@ func StartImplementation(impl game.Implementation, serverEndpoint string) {
 	handlers.Register(messageTypeYourTurn, socket.NewHandler(c.handleYourTurn))
 	handlers.Register(messageTypeNameRequest, socket.NewHandler(c.handleNameRequest))
 	handlers.Register(messageTypeNewGame, socket.NewHandler(c.handleNewGame))
+	handlers.Register(messageTypeGameOver, socket.NewHandler(c.handleGameOver))
 
 	conn, err := socket.NewConn(serverEndpoint, handlers, func() {
 		fmt.Println(`connection closed.`)
@@ -62,5 +63,13 @@ func (c *client) handleNewGame(any) {
 func (c *client) handleNameRequest(any) {
 	if err := c.conn.Send(messageTypeName, c.player.Name()); err != nil {
 		fmt.Println(`error sending name`, err)
+	}
+}
+
+func (c *client) handleGameOver(msg gameOverMessage) {
+	if msg.Won {
+		fmt.Println(`You won!`)
+	} else {
+		fmt.Println(`You lost...`)
 	}
 }

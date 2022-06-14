@@ -12,6 +12,9 @@ type Player interface {
 
 	// Play receives the Pokémon the other player picked. Returning a non-existing pokémon id (such as -1) is considered a forfeit.
 	Play(Pokémon) Pokémon
+
+	// GameOver is called when the game ends
+	GameOver(won bool)
 }
 
 type Pokémon int
