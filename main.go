@@ -12,7 +12,8 @@ import (
 
 func main() {
 	rand.Seed(time.Now().UnixMicro())
-	runGame(remote.NewImplementation(`http://localhost:60605`), remote.NewImplementation(`http://localhost:60605`))
+	remote.WaitForConnections(8888)
+	runGame(remote.AwaitImplementation(), remote.AwaitImplementation())
 }
 
 func runGame(impl1, impl2 game.Implementation) {

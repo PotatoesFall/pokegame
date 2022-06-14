@@ -1,60 +1,67 @@
 package remote
 
 import (
-	"bytes"
-	"encoding/json"
-	"math/rand"
+	"fmt"
+	"net"
 	"net/http"
+	"strconv"
 
 	"github.com/PotatoesFall/pokegame/game"
+	"github.com/gorilla/websocket"
 )
 
-type messageType string
+func WaitForConnections(port int) {
+	listener, err := net.Listen(`tcp`, `:`+strconv.Itoa(port))
+	if err != nil {
+		panic(err)
+	}
 
-const (
-	messageTypeNewGame     messageType = `new-game`
-	messageTypeNameRequest messageType = `name-request`
-	messageTypeName        messageType = `name`
-	messageTypeYourTurn    messageType = `your-turn`
-	messageTypeMyTurn      messageType = `my-turn`
-	messageTypeGameOver    messageType = `game-over`
-)
+	port = listener.Addr().(*net.TCPAddr).Port
+	fmt.Println(`awaiting connections on port ` + strconv.Itoa(port))
 
-type message struct {
-	typ messageType
-	msg json.RawMessage
+	go func() {
+		panic(http.Serve(listener, socketHandler{}))
+	}()
 }
 
-type newGameRequest struct {
-	SessionID int
+type socketHandler struct{}
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
 }
 
-type playRequest struct {
-	SessionID int
-	Prev      game.Pokémon
+func (socketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	newConnections <- conn
 }
 
-func NewImplementation(endpoint string) game.Implementation {
+var newConnections = make(chan *websocket.Conn)
+
+func AwaitImplementation() game.Implementation {
+	conn := <-newConnections
+
 	return func() game.Player {
-		sessionID := rand.Intn(999999) + 1
-
 		p := player{
-			endpoint:  endpoint,
-			sessionID: sessionID,
+			conn:     conn,
+			nameChan: make(chan string),
+			turnChan: make(chan myTurnMessage),
 		}
-
-		p.post(`/new`, newGameRequest{
-			SessionID: sessionID,
-		}, nil)
 
 		return p
 	}
 }
 
 type player struct {
-	endpoint  string
-	sessionID int
-	name      string
+	conn *websocket.Conn
+	name string
+
+	nameChan chan string
+	turnChan chan myTurnMessage
 }
 
 func (p player) Name() string {
@@ -66,50 +73,25 @@ func (p player) Name() string {
 }
 
 func (p player) getName() string {
-	var name string
-	p.post(`/name`, p.sessionID, &name)
+	send(p.conn, messageTypeNameRequest, nil)
+	name := <-p.nameChan
 	return name
 }
 
 func (p player) Start() game.Pokémon {
-	var pok game.Pokémon
-	p.post(`/start`, p.sessionID, &pok)
-	return pok
+	send(p.conn, messageTypeYourTurn, yourTurnMessage{
+		Prev: game.Pokémon(-1),
+	})
+
+	resp := <-p.turnChan
+	return resp.Next
 }
 
 func (p player) Play(prev game.Pokémon) game.Pokémon {
-	var pok game.Pokémon
-	p.post(`/play`, playRequest{
-		SessionID: p.sessionID,
-		Prev:      prev,
-	}, &pok)
-	return pok
-}
+	send(p.conn, messageTypeYourTurn, yourTurnMessage{
+		Prev: prev,
+	})
 
-func (p player) post(path string, body any, dst any) {
-	var data []byte
-	if body != nil {
-		j, err := json.Marshal(body)
-		if err != nil {
-			panic(err)
-		}
-		data = j
-	}
-
-	resp, err := http.DefaultClient.Post(p.endpoint+path, `application/json`, bytes.NewReader(data))
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		panic(resp.StatusCode)
-	}
-
-	if dst != nil {
-		err = json.NewDecoder(resp.Body).Decode(dst)
-		if err != nil {
-			panic(err)
-		}
-	}
+	resp := <-p.turnChan
+	return resp.Next
 }

@@ -2,7 +2,7 @@ package remote
 
 import (
 	"encoding/json"
-	"net/http"
+	"os"
 
 	"github.com/PotatoesFall/pokegame/game"
 	"github.com/gorilla/websocket"
@@ -15,75 +15,65 @@ func StartImplementation(impl game.Implementation, serverEndpoint string) {
 	}
 	defer conn.Close()
 
+	h := handler{
+		impl: impl,
+		conn: conn,
+	}
+
 	for {
-		var message Message
-		err := conn.ReadJSON(&message)
+		var msg message
+		err := conn.ReadJSON(&msg)
 		if err != nil {
 			panic(err)
 		}
 
+		go h.process(msg)
 	}
-
-	go func() {
-		panic(http.Serve(listener, handler{impl: impl, sessions: make(map[int]game.Player)}))
-	}()
 }
 
 type handler struct {
-	impl     game.Implementation
-	sessions map[int]game.Player
+	impl   game.Implementation
+	player game.Player
+	conn   *websocket.Conn
 }
 
-func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-	w.WriteHeader(http.StatusOK)
+func (h handler) process(msg message) {
+	switch msg.typ {
+	case messageTypeGameOver:
+		os.Exit(0)
 
-	switch r.URL.Path {
-	case `/new`:
-		h.handleNew(w, r)
-	case `/name`:
-		h.handleName(w, r)
-	case `/start`:
-		h.handleStart(w, r)
-	case `/play`:
-		h.handlePlay(w, r)
+	case messageTypeMyTurn:
+		yourTurn := readJSON[yourTurnMessage](msg.msg)
+		go h.handleYourTurn(yourTurn)
+
+	case messageTypeNameRequest:
+		go h.handleNameRequest()
+
+	case messageTypeNewGame:
+		go h.handleNewGame()
+
+	default:
+		panic(msg.typ)
 	}
 }
 
-func (h handler) handleNew(w http.ResponseWriter, r *http.Request) {
-	req := scanJSON[newGameRequest](r)
-	h.sessions[req.SessionID] = h.impl()
-	respond(w, nil)
-}
-
-func (h handler) handleName(w http.ResponseWriter, r *http.Request) {
-	sessionID := scanJSON[int](r)
-	respond(w, h.sessions[sessionID].Name())
-}
-
-func (h handler) handleStart(w http.ResponseWriter, r *http.Request) {
-	sessionID := scanJSON[int](r)
-	respond(w, h.sessions[sessionID].Start())
-}
-
-func (h handler) handlePlay(w http.ResponseWriter, r *http.Request) {
-	req := scanJSON[playRequest](r)
-	respond(w, h.sessions[req.SessionID].Play(req.Prev))
-}
-
-func scanJSON[T any](r *http.Request) T {
-	var t T
-	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
-		panic(err)
+func (h handler) handleYourTurn(msg yourTurnMessage) {
+	var resp myTurnMessage
+	if !msg.Prev.Valid() {
+		resp.Next = h.player.Start()
+	} else {
+		resp.Next = h.player.Play(msg.Prev)
 	}
-	return t
+
+	send(h.conn, messageTypeMyTurn, resp)
 }
 
-func respond(w http.ResponseWriter, resp any) {
-	if resp != nil {
-		err := json.NewEncoder(w).Encode(resp)
-		if err != nil {
-			panic(err)
-		}
-	}
+func (h *handler) handleNewGame() {
+	h.player = h.impl()
+}
+
+func (h handler) handleNameRequest() {
+	name, _ := json.Marshal(h.player.Name())
+
+	send(h.conn, messageTypeName, json.RawMessage(name))
 }
