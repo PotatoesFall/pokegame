@@ -28,7 +28,13 @@ func main() {
 	s.Start(listener)
 	fmt.Println(`awaiting connections on port ` + strconv.Itoa(port))
 
-	runGame(remote.AwaitImplementation(s), remote.AwaitImplementation(s))
+	for {
+		impl1, close1 := remote.AwaitImplementation(s)
+		impl2, close2 := remote.AwaitImplementation(s)
+		runGame(impl1, impl2)
+		close1()
+		close2()
+	}
 }
 
 func runGame(impl1, impl2 game.Implementation) {
@@ -43,23 +49,16 @@ func runGame(impl1, impl2 game.Implementation) {
 	fmt.Println()
 
 	if winner1 == winner2 {
-		exit(`It's a tie! Both programs lost and won once.`)
+		fmt.Println(`It's a tie! Both programs lost and won once.`)
 	}
 
 	if winner1 == 1 {
-		exit(fmt.Sprintf(`%s won both games!`, p1.Name()))
+		fmt.Printf("%s won both games!\n", p1.Name())
+	} else if winner1 == 2 {
+		fmt.Printf("%s won both games!\n", p2.Name())
+	} else {
+		panic(`unable to figure out who won: ` + strconv.Itoa(winner1))
 	}
-
-	if winner1 == 2 {
-		exit(fmt.Sprintf(`%s won both games!`, p2.Name()))
-	}
-
-	panic(`unable to figure out who won`)
-}
-
-func exit(msg string) {
-	fmt.Println(msg)
-	os.Exit(0)
 }
 
 func playGame(p1, p2 game.Player) int {
@@ -76,31 +75,31 @@ func playGame(p1, p2 game.Player) int {
 	currentPlayer, otherPlayer := p2, p1
 	winner := 0
 
-	allNames := game.AllNames()
+	// allNames := game.AllNames()
 	for turn(&p, used, currentPlayer, &c) {
-		if noMoreAnswers(allNames, used, c) {
-			fmt.Printf("There are no correct answers left! %s loses!\n", otherPlayer.Name())
-			break
-		}
+		// if noMoreAnswers(allNames, used, c) {
+		// 	fmt.Printf("There are no correct answers left! %s loses!\n", otherPlayer.Name())
+		// 	break
+		// }
 		currentPlayer, otherPlayer = otherPlayer, currentPlayer
 		winner = 1 - winner
 	}
 
-	p1.GameOver(winner == 1)
-	p2.GameOver(winner == 2)
+	p1.GameOver(winner == 0)
+	p2.GameOver(winner == 1)
 
 	return winner + 1
 }
 
-func noMoreAnswers(allNames []game.Pokémon, used map[game.Pokémon]bool, c rune) bool {
-	for _, pok := range game.AllNames() {
-		if pok.Start() == c && !used[pok] {
-			return false
-		}
-	}
+// func noMoreAnswers(allNames []game.Pokémon, used map[game.Pokémon]bool, c rune) bool {
+// 	for _, pok := range game.AllNames() {
+// 		if pok.Start() == c && !used[pok] {
+// 			return false
+// 		}
+// 	}
 
-	return true
-}
+// 	return true
+// }
 
 func turn(p *game.Pokémon, used map[game.Pokémon]bool, p1 game.Player, c *rune) bool {
 	*p = p1.Play(*p)

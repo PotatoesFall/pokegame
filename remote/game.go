@@ -7,7 +7,7 @@ import (
 	"github.com/PotatoesFall/pokegame/remote/socket"
 )
 
-func AwaitImplementation(s socket.Server) game.Implementation {
+func AwaitImplementation(s socket.Server) (impl game.Implementation, close func()) {
 	h := socket.Handlers{}
 	conn := s.AwaitConnection(h, func() {})
 
@@ -27,7 +27,7 @@ func AwaitImplementation(s socket.Server) game.Implementation {
 		}
 
 		return p
-	}
+	}, conn.Close
 }
 
 type player struct {
