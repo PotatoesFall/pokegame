@@ -1,81 +1,75 @@
 package remote
 
 import (
-	"encoding/json"
 	"fmt"
-	"net"
-	"net/http"
+	"os"
 
 	"github.com/PotatoesFall/pokegame/game"
+	"github.com/PotatoesFall/pokegame/remote/socket"
 )
 
-func StartImplementationServer(impl game.Implementation) {
-	listener, err := net.Listen(`tcp`, `:0`)
+func StartImplementation(impl game.Implementation, serverEndpoint string) {
+	c := client{
+		impl: impl,
+	}
+
+	handlers := socket.Handlers{}
+	handlers.Register(messageTypeNewGame, socket.NewHandler(c.handleNewGame))
+	handlers.Register(messageTypeYourTurn, socket.NewHandler(c.handleYourTurn))
+	handlers.Register(messageTypeNameRequest, socket.NewHandler(c.handleNameRequest))
+	handlers.Register(messageTypeNewGame, socket.NewHandler(c.handleNewGame))
+	handlers.Register(messageTypeGameOver, socket.NewHandler(c.handleGameOver))
+
+	conn, err := socket.NewConn(serverEndpoint, handlers, func() {
+		fmt.Println(`connection closed.`)
+		os.Exit(0)
+	})
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println(`Connection to server established.`)
 
-	fmt.Printf("Starting server on port %d\n", listener.Addr().(*net.TCPAddr).Port)
-	go func() game.Player {
-		panic(http.Serve(listener, handler{impl: impl, sessions: make(map[int]game.Player)}))
-	}()
+	c.conn = conn
 }
 
-type handler struct {
-	impl     game.Implementation
-	sessions map[int]game.Player
+type client struct {
+	impl   game.Implementation
+	player game.Player
+	conn   socket.Conn
 }
 
-func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-	w.WriteHeader(http.StatusOK)
+func (c *client) handleYourTurn(msg yourTurnMessage) {
+	if msg.Prev.Valid() {
+		fmt.Println("opponent:\t" + msg.Prev.Name())
+	}
 
-	switch r.URL.Path {
-	case `/new`:
-		h.handleNew(w, r)
-	case `/name`:
-		h.handleName(w, r)
-	case `/start`:
-		h.handleStart(w, r)
-	case `/play`:
-		h.handlePlay(w, r)
+	var resp myTurnMessage
+	if !msg.Prev.Valid() {
+		resp.Next = c.player.Start()
+	} else {
+		resp.Next = c.player.Play(msg.Prev)
+	}
+
+	fmt.Println("you:\t\t" + resp.Next.Name())
+	if err := c.conn.Send(messageTypeMyTurn, resp); err != nil {
+		fmt.Println(`error sending turn`, err)
 	}
 }
 
-func (h handler) handleNew(w http.ResponseWriter, r *http.Request) {
-	req := scanJSON[newGameRequest](r)
-	h.sessions[req.SessionID] = h.impl()
-	respond(w, nil)
+func (c *client) handleNewGame(any) {
+	c.player = c.impl()
 }
 
-func (h handler) handleName(w http.ResponseWriter, r *http.Request) {
-	sessionID := scanJSON[int](r)
-	respond(w, h.sessions[sessionID].Name())
-}
-
-func (h handler) handleStart(w http.ResponseWriter, r *http.Request) {
-	sessionID := scanJSON[int](r)
-	respond(w, h.sessions[sessionID].Start())
-}
-
-func (h handler) handlePlay(w http.ResponseWriter, r *http.Request) {
-	req := scanJSON[playRequest](r)
-	respond(w, h.sessions[req.SessionID].Play(req.Prev))
-}
-
-func scanJSON[T any](r *http.Request) T {
-	var t T
-	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
-		panic(err)
+func (c *client) handleNameRequest(any) {
+	if err := c.conn.Send(messageTypeName, c.player.Name()); err != nil {
+		fmt.Println(`error sending name`, err)
 	}
-	return t
 }
 
-func respond(w http.ResponseWriter, resp any) {
-	if resp != nil {
-		err := json.NewEncoder(w).Encode(resp)
-		if err != nil {
-			panic(err)
-		}
+func (c *client) handleGameOver(msg gameOverMessage) {
+	if msg.Won {
+		fmt.Println(`You won!`)
+	} else {
+		fmt.Println(`You lost...`)
 	}
 }

@@ -2,17 +2,30 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
+	"net"
 	"os"
-	"time"
+	"strconv"
 
-	"github.com/PotatoesFall/pokegame/dummy"
 	"github.com/PotatoesFall/pokegame/game"
+	"github.com/PotatoesFall/pokegame/remote"
+	"github.com/PotatoesFall/pokegame/remote/socket"
 )
 
 func main() {
-	rand.Seed(time.Now().UnixMicro())
-	runGame(dummy.New, dummy.New)
+	portEnv, _ := os.LookupEnv(`WS_PORT`)
+	port, err := strconv.Atoi(portEnv)
+	listener, err := net.Listen(`tcp`, `:`+strconv.Itoa(port))
+	if err != nil {
+		panic(err)
+	}
+
+	port = listener.Addr().(*net.TCPAddr).Port
+
+	s := socket.NewServer()
+	s.Start(listener)
+	fmt.Println(`awaiting connections on port ` + strconv.Itoa(port))
+
+	runGame(remote.AwaitImplementation(s), remote.AwaitImplementation(s))
 }
 
 func runGame(impl1, impl2 game.Implementation) {
@@ -69,6 +82,9 @@ func playGame(p1, p2 game.Player) int {
 		currentPlayer, otherPlayer = otherPlayer, currentPlayer
 		winner = 1 - winner
 	}
+
+	p1.GameOver(winner == 1)
+	p2.GameOver(winner == 2)
 
 	return winner + 1
 }

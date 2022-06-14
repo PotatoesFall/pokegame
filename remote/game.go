@@ -1,44 +1,49 @@
 package remote
 
 import (
-	"bytes"
-	"encoding/json"
-	"math/rand"
-	"net/http"
+	"fmt"
 
 	"github.com/PotatoesFall/pokegame/game"
+	"github.com/PotatoesFall/pokegame/remote/socket"
 )
 
-type newGameRequest struct {
-	SessionID int
-}
+func AwaitImplementation(s socket.Server) game.Implementation {
+	h := socket.Handlers{}
+	conn := s.AwaitConnection(h, func() {})
 
-type playRequest struct {
-	SessionID int
-	Prev      game.Pokémon
-}
-
-func NewImplementation(endpoint string) game.Implementation {
+	// TODO: currently an implementation will not work with multiple concurrent players
 	return func() game.Player {
-		sessionID := rand.Intn(999999) + 1
-
 		p := player{
-			endpoint:  endpoint,
-			sessionID: sessionID,
+			nameChan: make(chan string),
+			turnChan: make(chan myTurnMessage),
 		}
 
-		p.post(`/new`, newGameRequest{
-			SessionID: sessionID,
-		}, nil)
+		h.Register(messageTypeMyTurn, socket.NewHandler(p.handleMyTurn))
+		h.Register(messageTypeName, socket.NewHandler(p.handleName))
+
+		p.conn = conn
+		if err := p.conn.Send(messageTypeNewGame, nil); err != nil {
+			fmt.Println(`error starting new game`, err)
+		}
 
 		return p
 	}
 }
 
 type player struct {
-	endpoint  string
-	sessionID int
-	name      string
+	conn socket.Conn
+	name string
+
+	nameChan chan string
+	turnChan chan myTurnMessage
+}
+
+func (p player) handleMyTurn(msg myTurnMessage) {
+	p.turnChan <- msg
+}
+
+func (p player) handleName(name string) {
+	p.nameChan <- name
 }
 
 func (p player) Name() string {
@@ -50,50 +55,37 @@ func (p player) Name() string {
 }
 
 func (p player) getName() string {
-	var name string
-	p.post(`/name`, p.sessionID, &name)
+	if err := p.conn.Send(messageTypeNameRequest, nil); err != nil {
+		fmt.Println(`error sending name request`, err)
+	}
+	name := <-p.nameChan
 	return name
 }
 
 func (p player) Start() game.Pokémon {
-	var pok game.Pokémon
-	p.post(`/start`, p.sessionID, &pok)
-	return pok
+	if err := p.conn.Send(messageTypeYourTurn, yourTurnMessage{
+		Prev: game.Pokémon(-1),
+	}); err != nil {
+		fmt.Println(`error sending your turn`, err)
+	}
+
+	resp := <-p.turnChan
+	return resp.Next
 }
 
 func (p player) Play(prev game.Pokémon) game.Pokémon {
-	var pok game.Pokémon
-	p.post(`/play`, playRequest{
-		SessionID: p.sessionID,
-		Prev:      prev,
-	}, &pok)
-	return pok
+	if err := p.conn.Send(messageTypeYourTurn, yourTurnMessage{
+		Prev: prev,
+	}); err != nil {
+		fmt.Println(`error sending your turn`, err)
+	}
+
+	resp := <-p.turnChan
+	return resp.Next
 }
 
-func (p player) post(path string, body any, dst any) {
-	var data []byte
-	if body != nil {
-		j, err := json.Marshal(body)
-		if err != nil {
-			panic(err)
-		}
-		data = j
-	}
-
-	resp, err := http.DefaultClient.Post(p.endpoint+path, `application/json`, bytes.NewReader(data))
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		panic(resp.StatusCode)
-	}
-
-	if dst != nil {
-		err = json.NewDecoder(resp.Body).Decode(dst)
-		if err != nil {
-			panic(err)
-		}
+func (p player) GameOver(won bool) {
+	if err := p.conn.Send(messageTypeGameOver, gameOverMessage{won}); err != nil {
+		fmt.Println(`error sending game over`, err)
 	}
 }
