@@ -7,6 +7,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// TODO: Make a websocket package that abstracts everything
+
 func send(conn *websocket.Conn, typ messageType, msg any) {
 	var data []byte
 	if msg != nil {
