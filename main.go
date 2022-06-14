@@ -2,18 +2,30 @@ package main
 
 import (
 	"fmt"
-	"math/rand"
+	"net"
 	"os"
-	"time"
+	"strconv"
 
 	"github.com/PotatoesFall/pokegame/game"
 	"github.com/PotatoesFall/pokegame/remote"
+	"github.com/PotatoesFall/pokegame/remote/socket"
 )
 
 func main() {
-	rand.Seed(time.Now().UnixMicro())
-	remote.WaitForConnections(8888)
-	runGame(remote.AwaitImplementation(), remote.AwaitImplementation())
+	portEnv, _ := os.LookupEnv(`WS_PORT`)
+	port, err := strconv.Atoi(portEnv)
+	listener, err := net.Listen(`tcp`, `:`+strconv.Itoa(port))
+	if err != nil {
+		panic(err)
+	}
+
+	port = listener.Addr().(*net.TCPAddr).Port
+
+	s := socket.NewServer()
+	s.Start(listener)
+	fmt.Println(`awaiting connections on port ` + strconv.Itoa(port))
+
+	runGame(remote.AwaitImplementation(s), remote.AwaitImplementation(s))
 }
 
 func runGame(impl1, impl2 game.Implementation) {

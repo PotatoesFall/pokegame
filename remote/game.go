@@ -2,94 +2,48 @@ package remote
 
 import (
 	"fmt"
-	"net"
-	"net/http"
-	"strconv"
 
 	"github.com/PotatoesFall/pokegame/game"
-	"github.com/gorilla/websocket"
+	"github.com/PotatoesFall/pokegame/remote/socket"
 )
 
-func WaitForConnections(port int) {
-	listener, err := net.Listen(`tcp`, `:`+strconv.Itoa(port))
-	if err != nil {
-		panic(err)
-	}
+func AwaitImplementation(s socket.Server) game.Implementation {
+	h := socket.Handlers{}
+	conn := s.AwaitConnection(h, func() {})
 
-	port = listener.Addr().(*net.TCPAddr).Port
-	fmt.Println(`awaiting connections on port ` + strconv.Itoa(port))
-
-	go func() {
-		panic(http.Serve(listener, socketHandler{}))
-	}()
-}
-
-type socketHandler struct{}
-
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
-}
-
-func (socketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		panic(err)
-	}
-
-	newConnections <- conn
-}
-
-var newConnections = make(chan *websocket.Conn)
-
-func AwaitImplementation() game.Implementation {
-	conn := <-newConnections
-
-	nameChan := make(chan string)
-	turnChan := make(chan myTurnMessage)
-
-	go listen(conn, nameChan, turnChan)
-
+	// TODO: currently an implementation will not work with multiple concurrent players
 	return func() game.Player {
-		send(conn, messageTypeNewGame, nil)
-
 		p := player{
-			conn:     conn,
-			nameChan: nameChan,
-			turnChan: turnChan,
+			nameChan: make(chan string),
+			turnChan: make(chan myTurnMessage),
+		}
+
+		h.Register(messageTypeMyTurn, socket.NewHandler(p.handleMyTurn))
+		h.Register(messageTypeName, socket.NewHandler(p.handleName))
+
+		p.conn = conn
+		if err := p.conn.Send(messageTypeNewGame, nil); err != nil {
+			fmt.Println(`error starting new game`, err)
 		}
 
 		return p
 	}
 }
 
-func listen(conn *websocket.Conn, names chan string, turns chan myTurnMessage) {
-	for {
-		var msg message
-		err := conn.ReadJSON(&msg)
-		if err != nil {
-			panic(err)
-		}
-
-		switch msg.Typ {
-		case messageTypeMyTurn:
-			turns <- readJSON[myTurnMessage](msg.Msg)
-
-		case messageTypeName:
-			names <- readJSON[string](msg.Msg)
-
-		default:
-			panic(msg.Typ)
-		}
-	}
-}
-
 type player struct {
-	conn *websocket.Conn
+	conn socket.Conn
 	name string
 
 	nameChan chan string
 	turnChan chan myTurnMessage
+}
+
+func (p player) handleMyTurn(msg myTurnMessage) {
+	p.turnChan <- msg
+}
+
+func (p player) handleName(name string) {
+	p.nameChan <- name
 }
 
 func (p player) Name() string {
@@ -101,24 +55,30 @@ func (p player) Name() string {
 }
 
 func (p player) getName() string {
-	send(p.conn, messageTypeNameRequest, nil)
+	if err := p.conn.Send(messageTypeNameRequest, nil); err != nil {
+		fmt.Println(`error sending name request`, err)
+	}
 	name := <-p.nameChan
 	return name
 }
 
 func (p player) Start() game.Pokémon {
-	send(p.conn, messageTypeYourTurn, yourTurnMessage{
+	if err := p.conn.Send(messageTypeYourTurn, yourTurnMessage{
 		Prev: game.Pokémon(-1),
-	})
+	}); err != nil {
+		fmt.Println(`error sending your turn`, err)
+	}
 
 	resp := <-p.turnChan
 	return resp.Next
 }
 
 func (p player) Play(prev game.Pokémon) game.Pokémon {
-	send(p.conn, messageTypeYourTurn, yourTurnMessage{
+	if err := p.conn.Send(messageTypeYourTurn, yourTurnMessage{
 		Prev: prev,
-	})
+	}); err != nil {
+		fmt.Println(`error sending your turn`, err)
+	}
 
 	resp := <-p.turnChan
 	return resp.Next

@@ -1,82 +1,66 @@
 package remote
 
 import (
-	"encoding/json"
+	"fmt"
 	"os"
-	"time"
 
 	"github.com/PotatoesFall/pokegame/game"
-	"github.com/gorilla/websocket"
+	"github.com/PotatoesFall/pokegame/remote/socket"
 )
 
 func StartImplementation(impl game.Implementation, serverEndpoint string) {
-	conn, _, err := websocket.DefaultDialer.Dial(serverEndpoint, nil)
+	c := client{
+		impl: impl,
+	}
+
+	handlers := socket.Handlers{}
+	handlers.Register(messageTypeNewGame, socket.NewHandler(c.handleNewGame))
+	handlers.Register(messageTypeYourTurn, socket.NewHandler(c.handleYourTurn))
+	handlers.Register(messageTypeNameRequest, socket.NewHandler(c.handleNameRequest))
+	handlers.Register(messageTypeNewGame, socket.NewHandler(c.handleNewGame))
+
+	conn, err := socket.NewConn(serverEndpoint, handlers, func() {
+		fmt.Println(`connection closed.`)
+		os.Exit(0)
+	})
 	if err != nil {
 		panic(err)
 	}
-	defer conn.Close()
+	fmt.Println(`Connection to server established.`)
 
-	h := client{
-		impl: impl,
-		conn: conn,
-	}
-
-	for {
-		var msg message
-		err := conn.ReadJSON(&msg)
-		if err != nil {
-			panic(err)
-		}
-
-		go h.process(msg)
-	}
+	c.conn = conn
 }
 
 type client struct {
 	impl   game.Implementation
 	player game.Player
-	conn   *websocket.Conn
+	conn   socket.Conn
 }
 
-func (h *client) process(msg message) {
-	switch msg.Typ {
-	case messageTypeGameOver:
-		os.Exit(0)
-
-	case messageTypeYourTurn:
-		yourTurn := readJSON[yourTurnMessage](msg.Msg)
-		go h.handleYourTurn(yourTurn)
-
-	case messageTypeNameRequest:
-		go h.handleNameRequest()
-
-	case messageTypeNewGame:
-		go h.handleNewGame()
-
-	default:
-		panic(msg.Typ)
+func (c *client) handleYourTurn(msg yourTurnMessage) {
+	if msg.Prev.Valid() {
+		fmt.Println("opponent:\t" + msg.Prev.Name())
 	}
-}
-
-func (h *client) handleYourTurn(msg yourTurnMessage) {
-	time.Sleep(10 * time.Millisecond) // TODO FIX THIS
 
 	var resp myTurnMessage
 	if !msg.Prev.Valid() {
-		resp.Next = h.player.Start()
+		resp.Next = c.player.Start()
 	} else {
-		resp.Next = h.player.Play(msg.Prev)
+		resp.Next = c.player.Play(msg.Prev)
 	}
 
-	send(h.conn, messageTypeMyTurn, resp)
+	fmt.Println("you:\t\t" + resp.Next.Name())
+	if err := c.conn.Send(messageTypeMyTurn, resp); err != nil {
+		fmt.Println(`error sending turn`, err)
+	}
 }
 
-func (h *client) handleNewGame() {
-	h.player = h.impl()
+func (c *client) handleNewGame(any) {
+	c.player = c.impl()
 }
 
-func (h *client) handleNameRequest() {
-	name, _ := json.Marshal(h.player.Name())
-
-	send(h.conn, messageTypeName, name)
+func (c *client) handleNameRequest(any) {
+	if err := c.conn.Send(messageTypeName, c.player.Name()); err != nil {
+		fmt.Println(`error sending name`, err)
+	}
 }
