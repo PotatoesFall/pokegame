@@ -14,6 +14,9 @@ import (
 func main() {
 	portEnv, _ := os.LookupEnv(`WS_PORT`)
 	port, err := strconv.Atoi(portEnv)
+	if err != nil {
+		panic(err)
+	}
 	listener, err := net.Listen(`tcp`, `:`+strconv.Itoa(port))
 	if err != nil {
 		panic(err)
