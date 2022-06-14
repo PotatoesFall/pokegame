@@ -45,14 +45,42 @@ var newConnections = make(chan *websocket.Conn)
 func AwaitImplementation() game.Implementation {
 	conn := <-newConnections
 
+	nameChan := make(chan string)
+	turnChan := make(chan myTurnMessage)
+
+	go listen(conn, nameChan, turnChan)
+
 	return func() game.Player {
+		send(conn, messageTypeNewGame, nil)
+
 		p := player{
 			conn:     conn,
-			nameChan: make(chan string),
-			turnChan: make(chan myTurnMessage),
+			nameChan: nameChan,
+			turnChan: turnChan,
 		}
 
 		return p
+	}
+}
+
+func listen(conn *websocket.Conn, names chan string, turns chan myTurnMessage) {
+	for {
+		var msg message
+		err := conn.ReadJSON(&msg)
+		if err != nil {
+			panic(err)
+		}
+
+		switch msg.Typ {
+		case messageTypeMyTurn:
+			turns <- readJSON[myTurnMessage](msg.Msg)
+
+		case messageTypeName:
+			names <- readJSON[string](msg.Msg)
+
+		default:
+			panic(msg.Typ)
+		}
 	}
 }
 

@@ -17,8 +17,8 @@ func send(conn *websocket.Conn, typ messageType, msg any) {
 		data = jsn
 	}
 	fullMsg := message{
-		typ: typ,
-		msg: json.RawMessage(data),
+		Typ: typ,
+		Msg: json.RawMessage(data),
 	}
 	if err := conn.WriteJSON(fullMsg); err != nil {
 		panic(err)
@@ -46,8 +46,8 @@ const (
 )
 
 type message struct {
-	typ messageType
-	msg json.RawMessage
+	Typ messageType
+	Msg json.RawMessage
 }
 
 type yourTurnMessage struct {

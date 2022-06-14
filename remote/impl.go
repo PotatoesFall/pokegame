@@ -3,6 +3,7 @@ package remote
 import (
 	"encoding/json"
 	"os"
+	"time"
 
 	"github.com/PotatoesFall/pokegame/game"
 	"github.com/gorilla/websocket"
@@ -15,7 +16,7 @@ func StartImplementation(impl game.Implementation, serverEndpoint string) {
 	}
 	defer conn.Close()
 
-	h := handler{
+	h := client{
 		impl: impl,
 		conn: conn,
 	}
@@ -31,19 +32,19 @@ func StartImplementation(impl game.Implementation, serverEndpoint string) {
 	}
 }
 
-type handler struct {
+type client struct {
 	impl   game.Implementation
 	player game.Player
 	conn   *websocket.Conn
 }
 
-func (h handler) process(msg message) {
-	switch msg.typ {
+func (h *client) process(msg message) {
+	switch msg.Typ {
 	case messageTypeGameOver:
 		os.Exit(0)
 
-	case messageTypeMyTurn:
-		yourTurn := readJSON[yourTurnMessage](msg.msg)
+	case messageTypeYourTurn:
+		yourTurn := readJSON[yourTurnMessage](msg.Msg)
 		go h.handleYourTurn(yourTurn)
 
 	case messageTypeNameRequest:
@@ -53,11 +54,13 @@ func (h handler) process(msg message) {
 		go h.handleNewGame()
 
 	default:
-		panic(msg.typ)
+		panic(msg.Typ)
 	}
 }
 
-func (h handler) handleYourTurn(msg yourTurnMessage) {
+func (h *client) handleYourTurn(msg yourTurnMessage) {
+	time.Sleep(10 * time.Millisecond) // TODO FIX THIS
+
 	var resp myTurnMessage
 	if !msg.Prev.Valid() {
 		resp.Next = h.player.Start()
@@ -68,12 +71,12 @@ func (h handler) handleYourTurn(msg yourTurnMessage) {
 	send(h.conn, messageTypeMyTurn, resp)
 }
 
-func (h *handler) handleNewGame() {
+func (h *client) handleNewGame() {
 	h.player = h.impl()
 }
 
-func (h handler) handleNameRequest() {
+func (h *client) handleNameRequest() {
 	name, _ := json.Marshal(h.player.Name())
 
-	send(h.conn, messageTypeName, json.RawMessage(name))
+	send(h.conn, messageTypeName, name)
 }
